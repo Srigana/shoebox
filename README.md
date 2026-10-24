@@ -52,12 +52,12 @@ Free stack: **Neon** (Postgres for stats) + **Render** (Python API) + **Vercel**
 
 Free-tier notes: Render's free service sleeps after 15 minutes idle and takes about a minute to wake; the page pings the API on load to start that early, and Vercel's proxy waits up to 2 minutes. Render's free disk is wiped every time it sleeps, which is why stats live in Neon rather than SQLite in production.
 
-## Launch plan: getting 10–20 real users
+## Launch plan: getting 10 to 20 real users
 
-The goal is 10–20 people who upload at least one real receipt. Target people who actually have a pile of receipts:
+The goal is 10 to 20 people who upload at least one real receipt. Target people who actually have a pile of receipts:
 
-1. **Warm list (aim for 8–10).** Friends and family who freelance, drive rideshare, run an Etsy shop, do contract work, or have a side business. Send a personal text, not a broadcast: "I built a tool that turns receipt photos into a categorized expense list for taxes. Would you try it with 5 receipts and tell me what it got wrong?"
-2. **Communities (aim for 5–10).** Post where self-employed people talk about bookkeeping: r/freelance, r/smallbusiness, r/Etsy, r/doordash_drivers, local small-business Facebook groups, a university entrepreneurship club. Lead with the problem and ask for feedback; read each community's self-promotion rules first.
+1. **Warm list (aim for 8 to 10).** Friends and family who freelance, drive rideshare, run an Etsy shop, do contract work, or have a side business. Send a personal text, not a broadcast: "I built a tool that turns receipt photos into a categorized expense list for taxes. Would you try it with 5 receipts and tell me what it got wrong?"
+2. **Communities (aim for 5 to 10).** Post where self-employed people talk about bookkeeping: r/freelance, r/smallbusiness, r/Etsy, r/doordash_drivers, local small-business Facebook groups, a university entrepreneurship club. Lead with the problem and ask for feedback; read each community's self-promotion rules first.
 3. **Watch two people use it live.** Screen-share or sit next to them. You'll find the confusing parts in 10 minutes.
 4. **Ship one improvement from feedback within 48 hours** and tell the people who asked for it. That turns testers into returning users and gives you a story for interviews.
 

@@ -30,7 +30,7 @@ Rules:
   * Payment-processor, bank or card fees -> Bank and merchant fees
   * Courses, books, conference tickets -> Education and training
   * Use Other expenses only when nothing else fits.
-- category_reason: one short sentence the user can check at a glance.
+- category_reason: one short, plain sentence the user can check at a glance. No em dashes.
 - confidence: 0 to 1 for the category choice. Go lower when the receipt is ambiguous or mixed \
 (for example a big-box store with both groceries and office items).
 - If the document is not a receipt or invoice, set is_receipt to false, category to Other expenses, \

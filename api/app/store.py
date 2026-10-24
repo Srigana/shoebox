@@ -1,4 +1,4 @@
-"""Tiny event log — enough to answer "how many people actually used this?".
+"""Tiny event log: enough to answer "how many people actually used this?".
 
 Uses Postgres when DATABASE_URL is set (production: Render's free disk is wiped
 every time the service sleeps, so stats must live in a real database), and a
@@ -74,6 +74,12 @@ class Store:
                 f"INSERT INTO events (ts, client, event, meta) VALUES ({p}, {p}, {p}, {p})",
                 (time.time(), client, event, blob),
             )
+
+    def delete_client(self, client: str) -> int:
+        """Remove every event recorded for one anonymous ID. Returns rows deleted."""
+        with self._cursor() as cur:
+            cur.execute(f"DELETE FROM events WHERE client = {self.ph}", (client,))
+            return cur.rowcount
 
     def stats(self) -> dict[str, Any]:
         with self._cursor() as cur:

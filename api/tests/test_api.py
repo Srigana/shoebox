@@ -49,6 +49,19 @@ def test_receipt_normalizes_fields():
     assert Receipt.model_validate(SAMPLE).currency == "USD"
 
 
+@pytest.mark.parametrize("raw,clean", [
+    ("Coffee shop — likely a client meeting.", "Coffee shop, likely a client meeting."),
+    ("Airfare—business trip", "Airfare, business trip"),
+    ("Lunch – client", "Lunch, client"),
+    ("Pages 3–5 are fuel", "Pages 3-5 are fuel"),
+    ("— leading dash", "leading dash"),
+    ("No dashes here.", "No dashes here."),
+])
+def test_model_text_has_no_em_or_en_dashes(raw, clean):
+    r = Receipt.model_validate({**SAMPLE, "category_reason": raw, "merchant": raw})
+    assert r.category_reason == clean and r.merchant == clean
+
+
 def test_meals_are_half_deductible():
     assert deductible_estimate(Receipt.model_validate(SAMPLE)) == 11.31
     assert deductible_estimate(Receipt.model_validate({**SAMPLE, "category": "Travel"})) == 22.62
@@ -140,3 +153,13 @@ def test_events_and_stats(client):
     assert s["categories_corrected"] == 1
     assert s["category_acceptance_rate"] == round(2 / 3, 3)
     assert s["feedback"][0]["text"] == "love it"
+
+
+def test_delete_my_data(client):
+    upload(client, cid="a")
+    upload(client, cid="b")
+    client.post("/api/events", json={"event": "feedback", "meta": {"text": "hi"}}, headers={"X-Client-Id": "a"})
+    assert client.post("/api/delete-my-data").status_code == 400
+    assert client.post("/api/delete-my-data", headers={"X-Client-Id": "a"}).json() == {"deleted": 2}
+    s = client.get("/api/stats", headers={"Authorization": "Bearer test-token"}).json()
+    assert s["users"] == 1 and s["feedback"] == []

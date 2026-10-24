@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getClientId, logEvent, parseReceipt } from "@/lib/api";
 import { fullCsv, quickbooksCsv } from "@/lib/csv";
@@ -12,7 +13,15 @@ const LOW_CONFIDENCE = 0.7;
 const CONCURRENCY = 3;
 
 const money = (n: number | null | undefined, currency = "USD") =>
-  n == null ? "—" : n.toLocaleString("en-US", { style: "currency", currency });
+  n == null ? "Missing" : n.toLocaleString("en-US", { style: "currency", currency });
+
+function RemoveIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+      <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 function download(name: string, text: string) {
   const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
@@ -169,6 +178,10 @@ export default function Home() {
         <strong>Add receipts</strong>
         <span>Drag photos or PDFs here, or tap to choose. Up to 25 at a time.</span>
       </label>
+      <p className="fine">
+        Files are read and then discarded, not stored. Your ledger stays in this browser. By adding receipts you
+        agree to the <Link href="/terms">terms</Link> and <Link href="/privacy">privacy policy</Link>.
+      </p>
 
       <section aria-labelledby="ledger-title">
         <div className="ledger-head">
@@ -176,7 +189,7 @@ export default function Home() {
           {done.length > 0 && (
             <span className="count">
               {done.length} {done.length === 1 ? "receipt" : "receipts"}
-              {needsLook > 0 && ` · ${needsLook} to check`}
+              {needsLook > 0 && `, ${needsLook} to check`}
             </span>
           )}
         </div>
@@ -213,7 +226,7 @@ export default function Home() {
                     <td className="x">
                       {i.status === "error" && (
                         <button className="remove" aria-label={`Dismiss ${i.fileName}`} onClick={() => setItems((p) => p.filter((x) => x.id !== i.id))}>
-                          ×
+                          <RemoveIcon />
                         </button>
                       )}
                     </td>
@@ -245,7 +258,7 @@ export default function Home() {
                       <td className="num" data-label="Deductible">{money(deductible(r.total, i.category), r.currency)}</td>
                       <td className="x">
                         <button className="remove" aria-label={`Remove ${r.merchant ?? i.fileName}`} onClick={() => setItems((p) => p.filter((x) => x.id !== i.id))}>
-                          ×
+                          <RemoveIcon />
                         </button>
                       </td>
                     </tr>
@@ -316,6 +329,16 @@ export default function Home() {
           >
             Download full CSV
           </button>
+          {done.length > 0 && (
+            <p>
+              <button
+                className="textbtn"
+                onClick={() => confirm("Remove every receipt from this ledger? This can't be undone.") && setItems([])}
+              >
+                Clear ledger
+              </button>
+            </p>
+          )}
 
           <form
             className="feedback"
@@ -328,7 +351,7 @@ export default function Home() {
             }}
           >
             {sent ? (
-              <p className="thanks">Feedback sent. Thank you, it goes straight to the person building this.</p>
+              <p className="thanks">Feedback sent. Thank you.</p>
             ) : (
               <>
                 <label htmlFor="fb">What would make this useful for your business?</label>
@@ -339,25 +362,6 @@ export default function Home() {
           </form>
         </section>
       </div>
-
-      <footer className="foot">
-        <p>
-          Your ledger is saved in this browser only. Receipt images are sent to the server to be read and are not
-          stored.
-        </p>
-        <p>
-          Built with Claude. Not affiliated with Intuit or QuickBooks.{" "}
-          {done.length > 0 && (
-            <button
-              className="remove"
-              style={{ fontSize: "inherit", textDecoration: "underline" }}
-              onClick={() => confirm("Clear every receipt from this ledger?") && setItems([])}
-            >
-              Clear ledger
-            </button>
-          )}
-        </p>
-      </footer>
     </main>
   );
 }

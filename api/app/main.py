@@ -106,6 +106,13 @@ def create_app(
             raise HTTPException(400, "Unknown event")
         store.log(_client_id(x_client_id, request), body.event, body.meta)
 
+    @app.post("/api/delete-my-data")
+    def delete_my_data(x_client_id: Optional[str] = Header(default=None)) -> dict[str, int]:
+        cid = (x_client_id or "").strip()[:64]
+        if not cid:
+            raise HTTPException(400, "Missing ID.")
+        return {"deleted": store.delete_client(cid)}
+
     @app.get("/api/stats")
     def stats(authorization: Optional[str] = Header(default=None)) -> dict[str, Any]:
         token = os.getenv("ADMIN_TOKEN", "")

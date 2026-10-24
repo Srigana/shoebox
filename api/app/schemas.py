@@ -1,6 +1,7 @@
 """Data model for an extracted receipt and the Schedule C category map."""
 from __future__ import annotations
 
+import re
 from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
@@ -94,6 +95,16 @@ class Receipt(BaseModel):
     @classmethod
     def _currency(cls, v: object) -> str:
         return v.strip().upper()[:3] if isinstance(v, str) and v.strip() else "USD"
+
+    @field_validator("merchant", "category_reason", "payment_method", mode="before")
+    @classmethod
+    def _plain_punctuation(cls, v: object) -> object:
+        # Model-written text is shown on the site, which never uses em or en dashes.
+        if not isinstance(v, str):
+            return v
+        v = re.sub(r"(\d)\s*–\s*(\d)", r"\1-\2", v)  # number ranges: 3–5 -> 3-5
+        v = re.sub(r"\s*[—–]\s*", ", ", v)      # clause breaks -> comma
+        return re.sub(r"^[,\s]+|[,\s]+$", "", v)
 
     @field_validator("date", mode="before")
     @classmethod

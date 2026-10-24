@@ -12,7 +12,7 @@ ADMIN_TOKEN    =
 VERCEL_URL     =
 ```
 
-## Part 1 — Put the code on GitHub (5 min)
+## Part 1: Put the code on GitHub (5 min)
 
 1. Unzip `shoebox.zip`. You get a `shoebox` folder that is already a git repo with one commit.
 2. Go to https://github.com/new. Name it `shoebox`, choose **Public** (it's a portfolio piece), and leave every "Initialize" box **unchecked**. Click **Create repository**.
@@ -25,7 +25,7 @@ VERCEL_URL     =
    If it asks for a password, use a GitHub personal access token, or install GitHub Desktop and publish from there.
 4. Refresh the GitHub page. You should see `api/`, `web/`, `render.yaml` and `README.md`.
 
-## Part 2 — Database on Neon (5 min)
+## Part 2: Database on Neon (5 min)
 
 1. Go to https://neon.com and sign up (GitHub sign-in is fastest). No card needed.
 2. Create a project: name `shoebox`, Postgres version default, region **AWS US East** (closest to Render's default Virginia region).
@@ -33,7 +33,7 @@ VERCEL_URL     =
    `postgresql://neondb_owner:xxxx@ep-xxxx.us-east-1.aws.neon.tech/neondb?sslmode=require`
 4. Paste it into your notes as `DATABASE_URL`. You don't need to create tables; the app does that on first start.
 
-## Part 3 — Claude API key (5 min, the only part that costs money)
+## Part 3: Claude API key (5 min, the only part that costs money)
 
 1. Go to https://platform.claude.com and sign in or sign up.
 2. Open **Settings → Billing** and add a payment method or a small amount of credit. Budget: about $0.01 per receipt, so 20 users × 10 receipts ≈ $2.
@@ -41,7 +41,7 @@ VERCEL_URL     =
 4. Open **Settings → API keys** (https://platform.claude.com/settings/keys) → **Create key**. Name it `shoebox`, choose a **workspace** (the default one is fine; a key without a workspace needs an extra header this app doesn't send), then create.
 5. Copy the key (starts with `sk-ant-`). It's shown only once. Paste it into your notes as `ANTHROPIC_KEY`.
 
-## Part 4 — API on Render (10 min)
+## Part 4: API on Render (10 min)
 
 1. Go to https://render.com and sign up with GitHub.
 2. Click **New +** → **Blueprint**. Connect your GitHub account if asked and pick the `shoebox` repo.
@@ -49,25 +49,27 @@ VERCEL_URL     =
    - `ANTHROPIC_API_KEY` → your `ANTHROPIC_KEY`
    - `DATABASE_URL` → your `DATABASE_URL`
    - `ALLOWED_ORIGINS` → type `http://localhost:3000` for now (you'll update it in Part 6)
-4. Click **Apply** / **Deploy Blueprint**. The first build takes 3–5 minutes. Wait for **Live**.
+4. Click **Apply** / **Deploy Blueprint**. The first build takes 3 to 5 minutes. Wait for **Live**.
 5. Open the service. Copy the URL at the top (like `https://shoebox-api-xxxx.onrender.com`) into your notes as `RENDER_URL`.
 6. Go to the service's **Environment** tab, reveal `ADMIN_TOKEN` (Render generated it), and copy it into your notes.
 7. Check it works: open `RENDER_URL/health` in a browser. You should see `{"status":"ok"}`.
 
 If the build fails, open **Logs**; the last red lines say why. The most common cause is a pasted value with a stray space.
 
-## Part 5 — Website on Vercel (5 min)
+## Part 5: Website on Vercel (5 min)
 
 1. Go to https://vercel.com and sign up with GitHub (Hobby plan, free).
 2. **Add New… → Project** → import the `shoebox` repo.
 3. Before deploying:
    - **Root Directory**: click **Edit** and choose `web`. This matters; without it the build fails.
    - Framework should auto-detect as **Next.js**.
-   - **Environment Variables**: add `API_URL` = your `RENDER_URL` (no trailing slash, no `/api`).
-4. Click **Deploy**. About 1–2 minutes.
+   - **Environment Variables**: add two:
+     - `API_URL` = your `RENDER_URL` (no trailing slash, no `/api`)
+     - `NEXT_PUBLIC_CONTACT_EMAIL` = the email you want shown on the Privacy and Terms pages. Without it, those pages point people to the feedback box instead.
+4. Click **Deploy**. About 1 to 2 minutes.
 5. Copy your site URL (like `https://shoebox-xxxx.vercel.app`) into your notes as `VERCEL_URL`.
 
-## Part 6 — Connect them and test (5 min)
+## Part 6: Connect them and test (5 min)
 
 1. In Render → `shoebox-api` → **Environment**, edit `ALLOWED_ORIGINS` to:
    `http://localhost:3000,https://shoebox-xxxx.vercel.app` (your `VERCEL_URL`). Save; Render redeploys automatically.
@@ -79,7 +81,7 @@ If the build fails, open **Logs**; the last red lines say why. The most common c
    ```
    You should see `"users": 1` and `"receipts_parsed": 1`. No terminal? Use https://reqbin.com with a GET request and the `Authorization` header.
 
-## Optional — rename the URL
+## Optional: rename the URL
 
 Vercel → Project → **Settings → Domains** lets you change the subdomain to something like `shoebox-receipts.vercel.app`, which looks better on a resume. Remember to update `ALLOWED_ORIGINS` on Render if you do.
 
