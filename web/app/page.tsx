@@ -40,6 +40,8 @@ export default function Home() {
     }
     setLoaded(true);
     getClientId();
+    // Wake the API now: on Render's free tier it sleeps when idle and takes ~1 min to start.
+    fetch("/api/health").catch(() => {});
     try {
       const today = new Date().toISOString().slice(0, 10);
       if (localStorage.getItem("shoebox.visit") !== today) {
@@ -201,7 +203,7 @@ export default function Home() {
                   <tr key={i.id} className={i.status === "error" ? "err" : undefined}>
                     <td colSpan={5}>
                       {i.status === "reading" ? (
-                        <span className="reading">Reading {i.fileName}…</span>
+                        <span className="reading">Reading {i.fileName}… (the first one can take up to a minute)</span>
                       ) : (
                         <>
                           <strong>{i.fileName}</strong>: {i.error}

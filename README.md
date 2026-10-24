@@ -48,15 +48,9 @@ Tests: `cd api && pytest` (11 tests) and `cd web && npm test` (4 tests). CI runs
 
 ## Deploy (about 15 minutes)
 
-1. **Push to GitHub.**
-2. **API on Render**: New → Blueprint → pick the repo. Render reads `render.yaml`. Set `ANTHROPIC_API_KEY`, and set `ALLOWED_ORIGINS` to your Vercel URL once you have it. Copy the generated `ADMIN_TOKEN`. Check `https://<service>.onrender.com/health`.
-3. **Web on Vercel**: New Project → import the repo → Root Directory `web` → add env var `API_URL=https://<service>.onrender.com` → Deploy.
-4. **Smoke test** on your phone with a real receipt, then:
-   ```bash
-   curl -H "Authorization: Bearer $ADMIN_TOKEN" https://<service>.onrender.com/api/stats
-   ```
+Free stack: **Neon** (Postgres for stats) + **Render** (Python API) + **Vercel** (web). The only cost is Claude API usage, about one cent per receipt on Sonnet 5.5. Full click-by-click steps are in [DEPLOY.md](DEPLOY.md).
 
-Free-tier notes: Render's free web service sleeps after inactivity (first request takes ~30–60 s) and its disk is wiped on redeploy. Before you share the link widely, either upgrade to the starter plan and attach a persistent disk at `api/data`, or export your stats before each redeploy. The stats are your resume numbers, so don't lose them.
+Free-tier notes: Render's free service sleeps after 15 minutes idle and takes about a minute to wake; the page pings the API on load to start that early, and Vercel's proxy waits up to 2 minutes. Render's free disk is wiped every time it sleeps, which is why stats live in Neon rather than SQLite in production.
 
 ## Launch plan: getting 10–20 real users
 

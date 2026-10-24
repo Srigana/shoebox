@@ -12,15 +12,15 @@ services:
         value: 3.12.7
       - key: ANTHROPIC_API_KEY
         sync: false
-      - key: CLAUDE_MODEL
-        value: claude-sonnet-5-5
-      - key: ADMIN_TOKEN
-        generateValue: true
+      - key: DATABASE_URL
+        sync: false
       - key: ALLOWED_ORIGINS
         sync: false
+      - key: ADMIN_TOKEN
+        generateValue: true
+      - key: CLAUDE_MODEL
+        value: claude-sonnet-5-5
       - key: RATE_LIMIT_PER_HOUR
         value: "40"
       - key: MAX_DAILY_PARSES
-        value: "500"
-      - key: DB_PATH
-        value: data/shoebox.db
+        value: "300"

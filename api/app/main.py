@@ -50,13 +50,17 @@ def create_app(
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type", "X-Client-Id", "Authorization"],
     )
-    store = Store(db_path or os.getenv("DB_PATH", "data/shoebox.db"))
+    store = Store(
+        path=db_path or os.getenv("DB_PATH", "data/shoebox.db"),
+        database_url=None if db_path else (os.getenv("DATABASE_URL") or None),
+    )
     limiter = RateLimiter(
         per_client_per_hour=int(os.getenv("RATE_LIMIT_PER_HOUR", "40")),
         daily_cap=int(os.getenv("MAX_DAILY_PARSES", "500")),
     )
 
     @app.get("/health")
+    @app.get("/api/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
