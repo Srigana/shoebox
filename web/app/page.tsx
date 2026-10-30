@@ -5,12 +5,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getClientId, logEvent, parseReceipt } from "@/lib/api";
 import { fullCsv, quickbooksCsv } from "@/lib/csv";
 import { prepareFile } from "@/lib/image";
+import { loadSample, SAMPLES } from "@/lib/samples";
 import { CATEGORIES, deductible, isCategory, SCHEDULE_C_LINE, type Category } from "@/lib/tax";
-import type { DoneItem, Item } from "@/lib/types";
+import type { DoneItem, Item, SampleRef } from "@/lib/types";
 
 const STORAGE_KEY = "shoebox.items.v1";
 const LOW_CONFIDENCE = 0.7;
 const CONCURRENCY = 3;
+
+type Job = { id: string; file: File; sample?: SampleRef };
 
 const money = (n: number | null | undefined, currency = "USD") =>
   n == null ? "Missing" : n.toLocaleString("en-US", { style: "currency", currency });
@@ -36,7 +39,9 @@ export default function Home() {
   const [over, setOver] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [sent, setSent] = useState(false);
-  const queue = useRef<{ id: string; file: File }[]>([]);
+  const [loadingSamples, setLoadingSamples] = useState(false);
+  const [sampleError, setSampleError] = useState("");
+  const queue = useRef<Job[]>([]);
   const active = useRef(0);
 
   // Restore the ledger from this browser, and count the visit (once per day).
@@ -78,10 +83,10 @@ export default function Home() {
       const job = queue.current.shift()!;
       active.current++;
       (async () => {
-        const base = { id: job.id, fileName: job.file.name, addedAt: Date.now() };
+        const base = { id: job.id, fileName: job.file.name, addedAt: Date.now(), sample: job.sample };
         try {
           const { blob, name } = await prepareFile(job.file);
-          const { receipt } = await parseReceipt(blob, name);
+          const { receipt } = await parseReceipt(blob, name, job.sample?.id);
           if (!receipt.is_receipt) throw new Error("This doesn't look like a receipt or invoice.");
           const category: Category = isCategory(receipt.category) ? receipt.category : "Other expenses";
           update(job.id, { ...base, status: "done", receipt: { ...receipt, category }, category, edited: false });
@@ -95,13 +100,17 @@ export default function Home() {
     }
   }, []);
 
-  const addFiles = useCallback(
-    (files: FileList | File[]) => {
-      const list = Array.from(files).slice(0, 25);
-      if (!list.length) return;
-      const jobs = list.map((file) => ({ id: crypto.randomUUID(), file }));
+  const addJobs = useCallback(
+    (jobs: Job[]) => {
+      if (!jobs.length) return;
       setItems((prev) => [
-        ...jobs.map((j) => ({ id: j.id, fileName: j.file.name, addedAt: Date.now(), status: "reading" as const })),
+        ...jobs.map((j) => ({
+          id: j.id,
+          fileName: j.file.name,
+          addedAt: Date.now(),
+          sample: j.sample,
+          status: "reading" as const,
+        })),
         ...prev,
       ]);
       queue.current.push(...jobs);
@@ -110,10 +119,42 @@ export default function Home() {
     [pump],
   );
 
+  const addFiles = useCallback(
+    (files: FileList | File[]) =>
+      addJobs(Array.from(files).slice(0, 25).map((file) => ({ id: crypto.randomUUID(), file }))),
+    [addJobs],
+  );
+
+  const trySamples = async () => {
+    setLoadingSamples(true);
+    setSampleError("");
+    try {
+      const files = await Promise.all(SAMPLES.map(loadSample));
+      addJobs(
+        files.map((file, n) => ({
+          id: crypto.randomUUID(),
+          file,
+          sample: { id: SAMPLES[n].id, url: SAMPLES[n].url },
+        })),
+      );
+    } catch (e) {
+      setSampleError(e instanceof Error ? e.message : "Couldn't load the samples.");
+    } finally {
+      setLoadingSamples(false);
+    }
+  };
+
   const setCategory = (item: DoneItem, category: Category) => {
     const edited = category !== item.receipt.category;
     update(item.id, { ...item, category, edited });
-    if (edited) logEvent("correction", { item: item.id, from: item.receipt.category, to: category });
+    if (edited) {
+      logEvent("correction", {
+        item: item.id,
+        from: item.receipt.category,
+        to: category,
+        ...(item.sample ? { sample: item.sample.id } : {}),
+      });
+    }
   };
 
   const done = useMemo(
@@ -196,7 +237,14 @@ export default function Home() {
 
         {items.length === 0 ? (
           <div className="empty">
-            Your ledger is empty. Add a receipt above. A coffee receipt or a software invoice is a good first test.
+            <p>
+              Your ledger is empty. Add your own receipts above, or run three sample receipts through it: a cafe
+              receipt, an office supply receipt and a software invoice (PDF).
+            </p>
+            <button className="btn" onClick={trySamples} disabled={loadingSamples}>
+              {loadingSamples ? "Loading samples…" : "Try the sample receipts"}
+            </button>
+            {sampleError && <p role="alert" className="alert">{sampleError}</p>}
           </div>
         ) : (
           <>
@@ -241,6 +289,14 @@ export default function Home() {
                       <td>
                         <span className="merchant">{r.merchant ?? "Unknown merchant"}</span>
                         <span className="sub" title={r.category_reason}>{r.category_reason}</span>
+                        {i.sample && (
+                          <span className="sub">
+                            Sample receipt.{" "}
+                            <a href={i.sample.url} target="_blank" rel="noopener">
+                              View original<span className="sr-only"> (opens in a new tab)</span>
+                            </a>
+                          </span>
+                        )}
                       </td>
                       <td>
                         <select

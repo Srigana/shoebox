@@ -75,9 +75,7 @@ button, select, textarea { font: inherit; color: inherit; }
 .ledger {
   width: 100%;
   border-collapse: collapse;
-  background:
-    repeating-linear-gradient(to bottom, transparent 0 43px, var(--rule) 43px 44px),
-    var(--white);
+  background: var(--white);
   border: 1px solid var(--rule-strong);
 }
 .ledger th {
@@ -90,7 +88,7 @@ button, select, textarea { font: inherit; color: inherit; }
   background: var(--paper);
 }
 .ledger td {
-  padding: 0 12px;
+  padding: 8px 12px;
   height: 44px;
   border-bottom: 1px solid var(--rule);
   vertical-align: middle;
@@ -133,11 +131,15 @@ button, select, textarea { font: inherit; color: inherit; }
 }
 
 .empty {
-  padding: 32px 16px;
+  padding: 24px 16px;
   border: 1px solid var(--rule-strong);
   background: var(--white);
   color: var(--ink-soft);
 }
+.empty p { margin: 0 0 14px; max-width: 70ch; }
+.empty .btn { margin: 0; }
+.empty .alert { margin: 12px 0 0; color: var(--pencil); }
+.sub a { color: var(--ink); text-underline-offset: 2px; }
 
 .legend { margin: 10px 0 0; font-size: 0.875rem; color: var(--ink-soft); }
 .legend mark { background: color-mix(in srgb, var(--hilite) 60%, transparent); padding: 0 4px; }

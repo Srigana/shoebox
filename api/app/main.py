@@ -1,6 +1,7 @@
 """Shoebox API: receipt in, categorized expense out."""
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import os
@@ -14,6 +15,7 @@ from starlette.concurrency import run_in_threadpool
 
 from .extract import SUPPORTED_TYPES, ExtractionError, extract_receipt
 from .ratelimit import RateLimiter
+from .samples import EXPECTED, sample_id
 from .schemas import SCHEDULE_C_LINE, Receipt, deductible_estimate
 from .store import ALLOWED_EVENTS, Store
 
@@ -38,17 +40,19 @@ def create_app(
     extractor: Callable[[bytes, str], Receipt] = extract_receipt,
     db_path: Optional[str] = None,
 ) -> FastAPI:
-    if os.getenv("DEMO_MODE") == "1" and extractor is extract_receipt:
+    demo = os.getenv("DEMO_MODE") == "1" and extractor is extract_receipt
+    if demo:
         from .demo import demo_extractor
 
         extractor = demo_extractor
+    demo_delay = int(os.getenv("DEMO_DELAY_MS", "0")) / 1000
     app = FastAPI(title="Shoebox API", version="1.0.0")
     origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
         allow_methods=["GET", "POST"],
-        allow_headers=["Content-Type", "X-Client-Id", "Authorization"],
+        allow_headers=["Content-Type", "X-Client-Id", "X-Sample", "Authorization"],
     )
     store = Store(
         path=db_path or os.getenv("DB_PATH", "data/shoebox.db"),
@@ -69,8 +73,10 @@ def create_app(
         request: Request,
         file: UploadFile = File(...),
         x_client_id: Optional[str] = Header(default=None),
+        x_sample: Optional[str] = Header(default=None),
     ) -> dict[str, Any]:
         cid = _client_id(x_client_id, request)
+        sample = sample_id(x_sample)
         media_type = (file.content_type or "").lower()
         if media_type == "image/jpg":
             media_type = "image/jpeg"
@@ -87,12 +93,19 @@ def create_app(
 
         started = time.perf_counter()
         try:
-            receipt = await run_in_threadpool(extractor, data, media_type)
+            if demo and sample:
+                await asyncio.sleep(demo_delay)
+                receipt = EXPECTED[sample]
+            else:
+                receipt = await run_in_threadpool(extractor, data, media_type)
         except ExtractionError as e:
-            store.log(cid, "parse_error", {"error": str(e)[:200]})
+            store.log(cid, "parse_error", {"error": str(e)[:200], **({"sample": sample} if sample else {})})
             raise HTTPException(502, "Couldn't read that receipt. Try a clearer photo.") from e
         ms = int((time.perf_counter() - started) * 1000)
-        store.log(cid, "parse", {"category": receipt.category, "ms": ms, "type": media_type})
+        meta: dict[str, Any] = {"category": receipt.category, "ms": ms, "type": media_type}
+        if sample:
+            meta["sample"] = sample
+        store.log(cid, "parse", meta)
         return {
             "receipt": receipt.model_dump(),
             "schedule_c_line": SCHEDULE_C_LINE.get(receipt.category, ""),

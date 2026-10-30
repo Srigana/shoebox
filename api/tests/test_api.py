@@ -11,7 +11,7 @@ PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 100
 
 SAMPLE = {
     "is_receipt": True,
-    "merchant": "Blue Bottle Coffee",
+    "merchant": "Corner Grind Coffee",
     "date": "2026-10-20",
     "currency": "usd",
     "subtotal": 18.0,
@@ -50,11 +50,11 @@ def test_receipt_normalizes_fields():
 
 
 @pytest.mark.parametrize("raw,clean", [
-    ("Coffee shop — likely a client meeting.", "Coffee shop, likely a client meeting."),
-    ("Airfare—business trip", "Airfare, business trip"),
-    ("Lunch – client", "Lunch, client"),
-    ("Pages 3–5 are fuel", "Pages 3-5 are fuel"),
-    ("— leading dash", "leading dash"),
+    ("Coffee shop \u2014 likely a client meeting.", "Coffee shop, likely a client meeting."),
+    ("Airfare\u2014business trip", "Airfare, business trip"),
+    ("Lunch \u2013 client", "Lunch, client"),
+    ("Pages 3\u20135 are fuel", "Pages 3-5 are fuel"),
+    ("\u2014 leading dash", "leading dash"),
     ("No dashes here.", "No dashes here."),
 ])
 def test_model_text_has_no_em_or_en_dashes(raw, clean):
@@ -81,7 +81,7 @@ class FakeMessages:
 def test_extract_forces_tool_and_sends_image():
     msgs = FakeMessages([SimpleNamespace(type="tool_use", input=SAMPLE)])
     r = extract_receipt(PNG, "image/png", client=SimpleNamespace(messages=msgs))
-    assert r.merchant == "Blue Bottle Coffee" and r.category == "Meals"
+    assert r.merchant == "Corner Grind Coffee" and r.category == "Meals"
     call = msgs.calls[0]
     assert call["tool_choice"] == {"type": "tool", "name": "record_receipt"}
     assert call["messages"][0]["content"][0]["type"] == "image"
@@ -153,6 +153,32 @@ def test_events_and_stats(client):
     assert s["categories_corrected"] == 1
     assert s["category_acceptance_rate"] == round(2 / 3, 3)
     assert s["feedback"][0]["text"] == "love it"
+
+
+def test_sample_parses_do_not_count_as_users(client):
+    upload(client, cid="real")
+    for sid in ("coffee", "office"):
+        r = client.post("/api/parse", files={"file": ("s.jpg", PNG, "image/jpeg")},
+                        headers={"X-Client-Id": "founder", "X-Sample": sid})
+        assert r.status_code == 200
+    # unknown sample ids are treated as ordinary uploads
+    client.post("/api/parse", files={"file": ("s.jpg", PNG, "image/jpeg")},
+                headers={"X-Client-Id": "sneaky", "X-Sample": "made-up"})
+    client.post("/api/events", json={"event": "correction", "meta": {"item": "s1", "sample": "coffee"}},
+                headers={"X-Client-Id": "founder"})
+    s = client.get("/api/stats", headers={"Authorization": "Bearer test-token"}).json()
+    assert s["users"] == 2 and s["receipts_parsed"] == 2
+    assert s["sample_users"] == 1 and s["sample_parses"] == 2
+    assert s["categories_corrected"] == 0
+
+
+def test_demo_mode_returns_sample_ground_truth(tmp_path, monkeypatch):
+    monkeypatch.setenv("DEMO_MODE", "1")
+    c = TestClient(create_app(db_path=str(tmp_path / "d.db")))
+    r = c.post("/api/parse", files={"file": ("s.pdf", b"%PDF-1.4", "application/pdf")},
+               headers={"X-Client-Id": "x", "X-Sample": "invoice"}).json()
+    assert r["receipt"]["merchant"] == "Fieldnote Software, Inc."
+    assert r["receipt"]["total"] == 24.0 and r["schedule_c_line"] == "Line 27b (Part V)"
 
 
 def test_delete_my_data(client):

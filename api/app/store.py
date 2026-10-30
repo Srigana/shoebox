@@ -24,6 +24,7 @@ class Store:
         if self.pg_url:
             self.ph = "%s"
             self.item_expr = "meta::jsonb->>'item'"
+            self.sample_expr = "meta::jsonb->>'sample'"
             schema = (
                 "CREATE TABLE IF NOT EXISTS events ("
                 " id BIGSERIAL PRIMARY KEY, ts DOUBLE PRECISION NOT NULL, client TEXT NOT NULL,"
@@ -36,6 +37,7 @@ class Store:
             self._sqlite = sqlite3.connect(path, check_same_thread=False)
             self.ph = "?"
             self.item_expr = "json_extract(meta,'$.item')"
+            self.sample_expr = "json_extract(meta,'$.sample')"
             schema = (
                 "CREATE TABLE IF NOT EXISTS events ("
                 " id INTEGER PRIMARY KEY, ts REAL NOT NULL, client TEXT NOT NULL,"
@@ -87,15 +89,22 @@ class Store:
                 cur.execute(sql)
                 return int(cur.fetchone()[0])
 
+            # Tries of the built-in sample receipts are counted separately so they
+            # never inflate the real-usage numbers.
+            real = f"{self.sample_expr} IS NULL"
             visitors = q("SELECT COUNT(DISTINCT client) FROM events")
-            users = q("SELECT COUNT(DISTINCT client) FROM events WHERE event='parse'")
+            users = q(f"SELECT COUNT(DISTINCT client) FROM events WHERE event='parse' AND {real}")
             returning = q(
-                "SELECT COUNT(*) FROM (SELECT client FROM events WHERE event='parse'"
+                f"SELECT COUNT(*) FROM (SELECT client FROM events WHERE event='parse' AND {real}"
                 " GROUP BY client HAVING MAX(ts) - MIN(ts) > 86400) t"
             )
-            parsed = q("SELECT COUNT(*) FROM events WHERE event='parse'")
-            errors = q("SELECT COUNT(*) FROM events WHERE event='parse_error'")
-            corrected = q(f"SELECT COUNT(DISTINCT {self.item_expr}) FROM events WHERE event='correction'")
+            parsed = q(f"SELECT COUNT(*) FROM events WHERE event='parse' AND {real}")
+            errors = q(f"SELECT COUNT(*) FROM events WHERE event='parse_error' AND {real}")
+            corrected = q(
+                f"SELECT COUNT(DISTINCT {self.item_expr}) FROM events WHERE event='correction' AND {real}"
+            )
+            sample_users = q(f"SELECT COUNT(DISTINCT client) FROM events WHERE event='parse' AND NOT ({real})")
+            sample_parses = q(f"SELECT COUNT(*) FROM events WHERE event='parse' AND NOT ({real})")
             exports = q("SELECT COUNT(*) FROM events WHERE event IN ('export_csv','export_qbo')")
             cur.execute("SELECT ts, meta FROM events WHERE event='feedback' ORDER BY ts DESC LIMIT 50")
             feedback = [{"ts": r[0], "text": json.loads(r[1]).get("text", "")} for r in cur.fetchall()]
@@ -109,5 +118,7 @@ class Store:
             "categories_corrected": corrected,
             "category_acceptance_rate": round(accepted, 3) if accepted is not None else None,
             "exports": exports,
+            "sample_users": sample_users,
+            "sample_parses": sample_parses,
             "feedback": feedback,
         }

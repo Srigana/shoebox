@@ -45,7 +45,10 @@ export default function Privacy() {
       </p>
       <ul>
         <li>a visit, at most once a day, and the page that linked you here, if any</li>
-        <li>each receipt read: its category, file type and how long it took, but not the merchant, amounts or date</li>
+        <li>
+          each receipt read: its category, file type, how long it took and whether it was one of the built-in sample
+          receipts, but not the merchant, amounts or date
+        </li>
         <li>when a receipt can&rsquo;t be read: a short technical error message</li>
         <li>when you change a category: the old and new category</li>
         <li>when you download a CSV: how many rows it had</li>

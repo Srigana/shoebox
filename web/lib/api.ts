@@ -15,10 +15,12 @@ export function getClientId(): string {
   }
 }
 
-export async function parseReceipt(blob: Blob, name: string): Promise<ParseResponse> {
+export async function parseReceipt(blob: Blob, name: string, sampleId?: string): Promise<ParseResponse> {
   const body = new FormData();
   body.append("file", blob, name);
-  const res = await fetch("/api/parse", { method: "POST", body, headers: { "X-Client-Id": getClientId() } });
+  const headers: Record<string, string> = { "X-Client-Id": getClientId() };
+  if (sampleId) headers["X-Sample"] = sampleId;
+  const res = await fetch("/api/parse", { method: "POST", body, headers });
   if (!res.ok) {
     let msg = `Upload failed (${res.status}).`;
     try {
