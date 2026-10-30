@@ -1,0 +1,93 @@
+{
+  "samples": {
+    "name": "samples",
+    "model": "claude-sonnet-5-5",
+    "prompt_version": "7dd5bbaede29",
+    "run_date": "2026-10-30",
+    "receipts": 3,
+    "field_accuracy": 100.0,
+    "fields_correct": 12,
+    "fields_labeled": 12,
+    "field_ci": [
+      75.7,
+      100.0
+    ],
+    "receipts_all_correct": 3,
+    "receipts_scored": 3,
+    "errors": 0,
+    "per_field": {
+      "merchant": {
+        "correct": 3,
+        "labeled": 3,
+        "accuracy": 100.0
+      },
+      "date": {
+        "correct": 3,
+        "labeled": 3,
+        "accuracy": 100.0
+      },
+      "total": {
+        "correct": 3,
+        "labeled": 3,
+        "accuracy": 100.0
+      },
+      "category": {
+        "correct": 3,
+        "labeled": 3,
+        "accuracy": 100.0
+      }
+    },
+    "median_latency_s": 5.3,
+    "p95_latency_s": 5.3,
+    "cost_per_receipt_usd": 0.0077
+  },
+  "sroie": {
+    "name": "sroie",
+    "model": "claude-sonnet-5-5",
+    "prompt_version": "7dd5bbaede29",
+    "run_date": "2026-10-30",
+    "receipts": 80,
+    "field_accuracy": 90.0,
+    "fields_correct": 216,
+    "fields_labeled": 240,
+    "field_ci": [
+      85.6,
+      93.2
+    ],
+    "field_accuracy_identified": 98.3,
+    "fields_correct_identified": 236,
+    "merchant_identified": {
+      "correct": 78,
+      "labeled": 80,
+      "accuracy": 97.5
+    },
+    "receipts_all_correct": 56,
+    "receipts_scored": 80,
+    "errors": 0,
+    "per_field": {
+      "merchant": {
+        "correct": 58,
+        "labeled": 80,
+        "accuracy": 72.5
+      },
+      "date": {
+        "correct": 80,
+        "labeled": 80,
+        "accuracy": 100.0
+      },
+      "total": {
+        "correct": 78,
+        "labeled": 80,
+        "accuracy": 97.5
+      },
+      "category": {
+        "correct": 0,
+        "labeled": 0,
+        "accuracy": null
+      }
+    },
+    "median_latency_s": 4.4,
+    "p95_latency_s": 8.7,
+    "cost_per_receipt_usd": 0.0102
+  }
+}

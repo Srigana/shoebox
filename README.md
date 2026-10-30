@@ -11,7 +11,11 @@ Receipt photos and PDFs in, a categorized expense ledger out. Shoebox reads each
 Measured with the harness in [`api/eval`](api/eval/README.md): the production pipeline run over the public [SROIE](https://rrc.cvc.uab.es/?ch=13) scanned-receipt benchmark and hand-labeled receipts, scored field by field, with every miss listed in the report.
 
 <!-- accuracy:start -->
-No test set with at least 10 receipts has been run yet. See [api/eval](api/eval/README.md).
+| Test set | Receipts | Total | Date | Merchant: exact name / business identified | Category | All fields: strict / merchant identified |
+|---|---|---|---|---|---|---|
+| [sroie](api/eval/reports/sroie.md) | 80 | 97.5% | 100.0% | 72.5% / 97.5% | not labeled | **90.0%** / **98.3%** |
+
+Model: `claude-sonnet-5-5`. Each report lists every miss.
 <!-- accuracy:end -->
 
 ## How it works
