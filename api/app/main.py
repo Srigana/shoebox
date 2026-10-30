@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import logging
 import os
 import time
 from typing import Any, Callable, Optional
@@ -20,6 +21,9 @@ from .schemas import SCHEDULE_C_LINE, Receipt, deductible_estimate
 from .store import ALLOWED_EVENTS, Store
 
 MAX_BYTES = 6 * 1024 * 1024
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("shoebox")
 CLIENT_EVENTS = ALLOWED_EVENTS - {"parse", "parse_error"}  # those are logged server-side only
 
 
@@ -99,6 +103,7 @@ def create_app(
             else:
                 receipt = await run_in_threadpool(extractor, data, media_type)
         except ExtractionError as e:
+            log.warning("parse failed (%s): %s", media_type, e)  # shows in the host's logs; no receipt content
             store.log(cid, "parse_error", {"error": str(e)[:200], **({"sample": sample} if sample else {})})
             raise HTTPException(502, "Couldn't read that receipt. Try a clearer photo.") from e
         ms = int((time.perf_counter() - started) * 1000)

@@ -132,8 +132,9 @@ def extract_receipt_detailed(
         )
     except ExtractionError:
         raise
-    except Exception as e:  # network / API errors
-        raise ExtractionError(f"Model request failed: {type(e).__name__}") from e
+    except Exception as e:  # network / API errors; keep the API's own explanation for the logs
+        detail = getattr(e, "message", None) or str(e)
+        raise ExtractionError(f"Model request failed: {type(e).__name__}: {detail[:300]}") from e
 
     usage = getattr(msg, "usage", None)
     tokens = {
