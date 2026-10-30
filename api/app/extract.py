@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import json
 import os
 from typing import Any, Optional
 
@@ -99,13 +101,23 @@ def _file_block(data: bytes, media_type: str) -> dict[str, Any]:
     return {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": b64}}
 
 
-def extract_receipt(data: bytes, media_type: str, client: Optional[Any] = None) -> Receipt:
+# Changes whenever the prompt or schema changes, so cached eval results are
+# never reused across prompt versions.
+PROMPT_VERSION = hashlib.sha256(
+    (SYSTEM_PROMPT + json.dumps(RECORD_TOOL, sort_keys=True)).encode()
+).hexdigest()[:12]
+
+
+def extract_receipt_detailed(
+    data: bytes, media_type: str, client: Optional[Any] = None, model: Optional[str] = None
+) -> tuple[Receipt, dict[str, int]]:
+    """Like extract_receipt, but also returns token usage (used by the eval harness)."""
     if media_type not in SUPPORTED_TYPES:
         raise ExtractionError(f"Unsupported file type: {media_type}")
     client = client or _get_client()
     try:
         msg = client.messages.create(
-            model=MODEL,
+            model=model or MODEL,
             max_tokens=2048,
             system=SYSTEM_PROMPT,
             tools=[RECORD_TOOL],
@@ -123,7 +135,16 @@ def extract_receipt(data: bytes, media_type: str, client: Optional[Any] = None) 
     except Exception as e:  # network / API errors
         raise ExtractionError(f"Model request failed: {type(e).__name__}") from e
 
+    usage = getattr(msg, "usage", None)
+    tokens = {
+        "input_tokens": int(getattr(usage, "input_tokens", 0) or 0),
+        "output_tokens": int(getattr(usage, "output_tokens", 0) or 0),
+    }
     for block in msg.content:
         if getattr(block, "type", None) == "tool_use":
-            return Receipt.model_validate(block.input)
+            return Receipt.model_validate(block.input), tokens
     raise ExtractionError("Model did not return structured output.")
+
+
+def extract_receipt(data: bytes, media_type: str, client: Optional[Any] = None) -> Receipt:
+    return extract_receipt_detailed(data, media_type, client=client)[0]

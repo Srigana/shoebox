@@ -9,3 +9,6 @@ __pycache__/
 .venv/
 api/data/
 *.db
+
+# eval downloads, your own receipts, raw results
+api/eval/data/

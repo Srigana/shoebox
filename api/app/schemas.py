@@ -102,8 +102,8 @@ class Receipt(BaseModel):
         # Model-written text is shown on the site, which never uses em or en dashes.
         if not isinstance(v, str):
             return v
-        v = re.sub(r"(\d)\s*–\s*(\d)", r"\1-\2", v)  # number ranges: 3–5 -> 3-5
-        v = re.sub(r"\s*[—–]\s*", ", ", v)      # clause breaks -> comma
+        v = re.sub(r"(\d)\s*\u2013\s*(\d)", r"\1-\2", v)  # number ranges (en dash) -> 3-5
+        v = re.sub(r"\s*[\u2014\u2013]\s*", ", ", v)  # em/en dash clause breaks -> comma
         return re.sub(r"^[,\s]+|[,\s]+$", "", v)
 
     @field_validator("date", mode="before")
