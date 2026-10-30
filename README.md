@@ -1,28 +1,30 @@
 # Shoebox
 
-Turn a shoebox of receipts into a categorized expense ledger. Drop in receipt photos or PDFs; Shoebox reads each one with Claude, assigns an IRS Schedule C expense category with a one-line reason, flags the ones it's unsure about, and exports a QuickBooks-ready CSV.
+Receipt photos and PDFs in, a categorized expense ledger out. Shoebox reads each receipt, files it under an IRS Schedule C category with a one-line reason, highlights the ones it's unsure about, and exports a QuickBooks-ready CSV. Built for freelancers and sole proprietors who do their own books.
 
-Built for freelancers and sole proprietors who do their own books.
+**[Try the live demo](https://shoebox-taupe.vercel.app)**. No sign-up: click "Try the sample receipts" to run three sample receipts through it.
 
-## What it does
+![Running the three sample receipts, changing one category, and the totals by Schedule C line](docs/demo.gif)
 
-- **Reads receipts**: merchant, date, subtotal, tax, tip, total, payment method, line items. Photos are downscaled in the browser (≈4 MB → ≈300 KB) before upload; PDFs go straight through.
-- **Categorizes for taxes**: 17 categories mapped to Schedule C lines, with business meals estimated at 50% deductible.
-- **Keeps a human in the loop**: low-confidence rows are highlighted; one click changes a category, and every change is logged as a correction.
-- **Exports**: QuickBooks Online bank-transaction CSV (Date, Description, Amount) and a full CSV for an accountant.
-- **Measures itself**: an anonymous event log answers "how many people used it, and how often was the AI right?" at `GET /api/stats`.
+## Accuracy
 
-## Architecture
+Measured with the harness in [`api/eval`](api/eval/README.md): the production pipeline run over the public [SROIE](https://rrc.cvc.uab.es/?ch=13) scanned-receipt benchmark and hand-labeled receipts, scored field by field, with every miss listed in the report.
+
+<!-- accuracy:start -->
+No test set with at least 10 receipts has been run yet. See [api/eval](api/eval/README.md).
+<!-- accuracy:end -->
+
+## How it works
 
 ```
-Browser (Next.js, TypeScript)  ──/api/*──▶  Vercel rewrite  ──▶  FastAPI (Python) on Render  ──▶  Claude (vision + forced tool use)
-  - image downscale                                              - validation, rate limits         returns typed JSON
-  - ledger in localStorage                                       - SQLite event log
-  - CSV / QuickBooks export                                      - /api/stats
+Browser (Next.js, TypeScript)                FastAPI (Python) on Render                 Claude
+  downscale photo to 1600 px JPEG  --/api-->   validate type and size, rate limit  -->   vision + forced tool call
+  ledger in localStorage            (Vercel    Pydantic normalizes the result     <--   JSON matching the schema
+  CSV and QuickBooks export          proxy)    anonymous usage events in Postgres
 ```
 
-- **Structured output via tool use.** The model is forced to call a `record_receipt` tool whose JSON schema enumerates the categories, so responses are always typed; Pydantic then normalizes dates, currency, confidence and unknown categories.
-- **One origin for the browser.** Vercel proxies `/api/*` to Render, so there's no CORS in production and the backend URL isn't exposed.
-- **Spend guardrails.** Per-client hourly limit plus a global daily cap on parses.
-- **Privacy.** Receipt images aren't stored server-side; the ledger lives in the user's browser.
-
+- **Structured output by construction.** The model must call a `record_receipt` tool whose JSON schema lists the 17 allowed categories, so every response is typed. Pydantic then normalizes dates, currency and confidence, and maps anything unexpected to "Other expenses" rather than failing.
+- **Confidence drives review.** Low-confidence rows are highlighted, and a category change is one click. Every change is logged, so the share of categories nobody changed is a live accuracy signal alongside the offline eval.
+- **Measured, not assumed.** The eval runs the exact production prompt and image preprocessing, caches predictions by prompt version so prompt changes can be compared cheaply, and reports 95% confidence intervals because 80 receipts is a small sample.
+- **Honest usage numbers.** Sample-receipt tries are tagged and kept out of the user counts.
+- **Cheap to run.** One origin for the browser (Vercel proxies `/api` to Render), per-client and daily caps on model calls, and nothing stored server-side except anonymous events.
