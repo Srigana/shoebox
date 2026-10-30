@@ -18,12 +18,12 @@ No test set with at least 10 receipts has been run yet. See [api/eval](api/eval/
 
 ```
 Browser (Next.js, TypeScript)                FastAPI (Python) on Render                 Claude
-  downscale photo to 1600 px JPEG  --/api-->   validate type and size, rate limit  -->   vision + forced tool call
+  downscale photo to 1600 px JPEG  --/api-->   validate type and size, rate limit  -->   vision + structured output
   ledger in localStorage            (Vercel    Pydantic normalizes the result     <--   JSON matching the schema
   CSV and QuickBooks export          proxy)    anonymous usage events in Postgres
 ```
 
-- **Structured output by construction.** The model must call a `record_receipt` tool whose JSON schema lists the 17 allowed categories, so every response is typed. Pydantic then normalizes dates, currency and confidence, and maps anything unexpected to "Other expenses" rather than failing.
+- **Structured output by construction.** Each request carries a JSON schema (Claude's structured outputs) that lists the 17 allowed categories, so every reply is valid, typed JSON. Pydantic then normalizes dates, currency and confidence, and maps anything unexpected to "Other expenses" rather than failing.
 - **Confidence drives review.** Low-confidence rows are highlighted, and a category change is one click. Every change is logged, so the share of categories nobody changed is a live accuracy signal alongside the offline eval.
 - **Measured, not assumed.** The eval runs the exact production prompt and image preprocessing, caches predictions by prompt version so prompt changes can be compared cheaply, and reports 95% confidence intervals because 80 receipts is a small sample.
 - **Honest usage numbers.** Sample-receipt tries are tagged and kept out of the user counts.

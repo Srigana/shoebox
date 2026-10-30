@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -70,33 +71,63 @@ def test_meals_are_half_deductible():
 # --- extractor with a fake Anthropic client ---------------------------------
 
 class FakeMessages:
-    def __init__(self, content):
-        self.content, self.calls = content, []
+    def __init__(self, content, stop_reason="end_turn"):
+        self.content, self.stop_reason, self.calls = content, stop_reason, []
 
     def create(self, **kw):
         self.calls.append(kw)
-        return SimpleNamespace(content=self.content)
+        return SimpleNamespace(content=self.content, stop_reason=self.stop_reason)
 
 
-def test_extract_forces_tool_and_sends_image():
-    msgs = FakeMessages([SimpleNamespace(type="tool_use", input=SAMPLE)])
+def _json_reply(data=SAMPLE):
+    return [SimpleNamespace(type="text", text=json.dumps(data))]
+
+
+def test_extract_uses_structured_output_not_forced_tools():
+    msgs = FakeMessages(_json_reply())
     r = extract_receipt(PNG, "image/png", client=SimpleNamespace(messages=msgs))
     assert r.merchant == "Corner Grind Coffee" and r.category == "Meals"
     call = msgs.calls[0]
-    assert call["tool_choice"] == {"type": "tool", "name": "record_receipt"}
+    # Claude Sonnet 5.5 returns 400 for tool_choice "tool"/"any"; never send it.
+    assert "tool_choice" not in call and "tools" not in call
+    fmt = call["extra_body"]["output_config"]["format"]
+    assert fmt["type"] == "json_schema" and fmt["schema"]["additionalProperties"] is False
     assert call["messages"][0]["content"][0]["type"] == "image"
 
 
 def test_extract_pdf_uses_document_block():
-    msgs = FakeMessages([SimpleNamespace(type="tool_use", input=SAMPLE)])
+    msgs = FakeMessages(_json_reply())
     extract_receipt(b"%PDF-1.4", "application/pdf", client=SimpleNamespace(messages=msgs))
     assert msgs.calls[0]["messages"][0]["content"][0]["type"] == "document"
 
 
-def test_extract_without_tool_use_raises():
-    msgs = FakeMessages([SimpleNamespace(type="text", text="hmm")])
+@pytest.mark.parametrize("content,stop", [
+    ([SimpleNamespace(type="text", text="hmm")], "end_turn"),   # not JSON
+    ([], "end_turn"),                                            # nothing returned
+    (_json_reply(), "max_tokens"),                               # cut off
+    ([SimpleNamespace(type="text", text="{}")], "refusal"),
+])
+def test_extract_bad_replies_raise(content, stop):
     with pytest.raises(ExtractionError):
-        extract_receipt(PNG, "image/png", client=SimpleNamespace(messages=msgs))
+        extract_receipt(PNG, "image/png", client=SimpleNamespace(messages=FakeMessages(content, stop)))
+
+
+def test_schema_follows_structured_output_rules():
+    from app.extract import RECEIPT_SCHEMA
+
+    def walk(node):
+        if isinstance(node, dict):
+            if node.get("type") == "object":
+                assert node["additionalProperties"] is False
+                assert set(node["properties"]) == set(node["required"])
+            assert not {"minimum", "maximum", "multipleOf", "minLength", "maxLength"} & set(node)
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    walk(RECEIPT_SCHEMA)
 
 
 # --- HTTP ------------------------------------------------------------------

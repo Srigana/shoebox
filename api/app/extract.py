@@ -1,4 +1,9 @@
-"""Receipt extraction with Claude vision + forced tool use for structured output."""
+"""Receipt extraction with Claude vision and structured outputs (a JSON schema the reply must match).
+
+Claude Sonnet 5.5 rejects forced tool use (tool_choice "tool" or "any"), so the
+schema goes in output_config.format instead, which every model supports. See
+platform.claude.com/docs/en/build-with-claude/structured-outputs.
+"""
 from __future__ import annotations
 
 import base64
@@ -16,7 +21,7 @@ PDF_TYPE = "application/pdf"
 SUPPORTED_TYPES = IMAGE_TYPES | {PDF_TYPE}
 
 SYSTEM_PROMPT = """You are a careful bookkeeping assistant for US freelancers and small businesses. \
-You read receipts and invoices and record them with the record_receipt tool.
+You read receipts and invoices and record each one as JSON matching the given schema.
 
 Rules:
 - Extract only what is printed. Use null for anything missing or illegible. Never guess amounts.
@@ -33,46 +38,51 @@ Rules:
   * Courses, books, conference tickets -> Education and training
   * Use Other expenses only when nothing else fits.
 - category_reason: one short, plain sentence the user can check at a glance. No em dashes.
-- confidence: 0 to 1 for the category choice. Go lower when the receipt is ambiguous or mixed \
-(for example a big-box store with both groceries and office items).
+- confidence: a number from 0 to 1 for the category choice. Go lower when the receipt is ambiguous \
+or mixed (for example a big-box store with both groceries and office items).
 - If the document is not a receipt or invoice, set is_receipt to false, category to Other expenses, \
 and leave the other fields null."""
 
-_num = {"type": ["number", "null"]}
-_str = {"type": ["string", "null"]}
 
-RECORD_TOOL: dict[str, Any] = {
-    "name": "record_receipt",
-    "description": "Record the structured contents and expense category of one receipt or invoice.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "is_receipt": {"type": "boolean"},
-            "merchant": _str,
-            "date": {**_str, "description": "YYYY-MM-DD"},
-            "currency": {"type": "string", "description": "ISO 4217 code, e.g. USD"},
-            "subtotal": _num,
-            "tax": _num,
-            "tip": _num,
-            "total": _num,
-            "payment_method": {**_str, "description": "e.g. 'Visa ••1234', 'Cash'"},
-            "line_items": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {"description": {"type": "string"}, "amount": _num},
-                    "required": ["description", "amount"],
-                },
+def _nullable(t: str, description: str | None = None) -> dict[str, Any]:
+    out: dict[str, Any] = {"anyOf": [{"type": t}, {"type": "null"}]}
+    if description:
+        out["description"] = description
+    return out
+
+
+# Structured-output rules: every object closes with additionalProperties false, and
+# numeric limits such as minimum/maximum aren't allowed (Pydantic clamps confidence).
+RECEIPT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "is_receipt": {"type": "boolean"},
+        "merchant": _nullable("string"),
+        "date": _nullable("string", "YYYY-MM-DD"),
+        "currency": {"type": "string", "description": "ISO 4217 code, e.g. USD"},
+        "subtotal": _nullable("number"),
+        "tax": _nullable("number"),
+        "tip": _nullable("number"),
+        "total": _nullable("number"),
+        "payment_method": _nullable("string", "e.g. 'Visa ••1234', 'Cash'"),
+        "line_items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"description": {"type": "string"}, "amount": _nullable("number")},
+                "required": ["description", "amount"],
+                "additionalProperties": False,
             },
-            "category": {"type": "string", "enum": CATEGORIES},
-            "category_reason": {"type": "string"},
-            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
         },
-        "required": [
-            "is_receipt", "merchant", "date", "currency", "total",
-            "line_items", "category", "category_reason", "confidence",
-        ],
+        "category": {"type": "string", "enum": CATEGORIES},
+        "category_reason": {"type": "string"},
+        "confidence": {"type": "number", "description": "0 to 1"},
     },
+    "required": [
+        "is_receipt", "merchant", "date", "currency", "subtotal", "tax", "tip", "total",
+        "payment_method", "line_items", "category", "category_reason", "confidence",
+    ],
+    "additionalProperties": False,
 }
 
 
@@ -104,7 +114,7 @@ def _file_block(data: bytes, media_type: str) -> dict[str, Any]:
 # Changes whenever the prompt or schema changes, so cached eval results are
 # never reused across prompt versions.
 PROMPT_VERSION = hashlib.sha256(
-    (SYSTEM_PROMPT + json.dumps(RECORD_TOOL, sort_keys=True)).encode()
+    (SYSTEM_PROMPT + json.dumps(RECEIPT_SCHEMA, sort_keys=True)).encode()
 ).hexdigest()[:12]
 
 
@@ -118,10 +128,8 @@ def extract_receipt_detailed(
     try:
         msg = client.messages.create(
             model=model or MODEL,
-            max_tokens=2048,
+            max_tokens=4096,
             system=SYSTEM_PROMPT,
-            tools=[RECORD_TOOL],
-            tool_choice={"type": "tool", "name": "record_receipt"},
             messages=[{
                 "role": "user",
                 "content": [
@@ -129,6 +137,8 @@ def extract_receipt_detailed(
                     {"type": "text", "text": "Extract and categorize this receipt."},
                 ],
             }],
+            # Sent as extra_body so it works on any version of the anthropic SDK.
+            extra_body={"output_config": {"format": {"type": "json_schema", "schema": RECEIPT_SCHEMA}}},
         )
     except ExtractionError:
         raise
@@ -141,10 +151,16 @@ def extract_receipt_detailed(
         "input_tokens": int(getattr(usage, "input_tokens", 0) or 0),
         "output_tokens": int(getattr(usage, "output_tokens", 0) or 0),
     }
-    for block in msg.content:
-        if getattr(block, "type", None) == "tool_use":
-            return Receipt.model_validate(block.input), tokens
-    raise ExtractionError("Model did not return structured output.")
+    stop = getattr(msg, "stop_reason", None)
+    if stop in ("max_tokens", "refusal"):
+        raise ExtractionError(f"Model stopped early ({stop}).")
+    text = "".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", None) == "text")
+    if not text.strip():
+        raise ExtractionError("Model returned no JSON.")
+    try:
+        return Receipt.model_validate(json.loads(text)), tokens
+    except (json.JSONDecodeError, ValueError) as e:
+        raise ExtractionError(f"Model output didn't match the schema: {str(e)[:200]}") from e
 
 
 def extract_receipt(data: bytes, media_type: str, client: Optional[Any] = None) -> Receipt:
