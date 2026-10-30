@@ -7,7 +7,8 @@ from PIL import Image
 
 from app.schemas import Receipt
 from eval.run import END, START, run_eval, update_readme
-from eval.score import date_match, merchant_match, parse_amount, parse_date, total_match, wilson
+from eval.score import (date_match, merchant_identified, merchant_match, parse_amount, parse_date,
+                        total_match, wilson)
 
 
 # --- scoring rules ---------------------------------------------------------
@@ -22,6 +23,23 @@ from eval.score import date_match, merchant_match, parse_amount, parse_date, tot
 ])
 def test_merchant_match(pred, gold, ok):
     assert merchant_match(pred, gold) is ok
+
+
+@pytest.mark.parametrize("pred,gold,ok", [
+    # Real SROIE outputs: brand + legal name + branch still names the right business
+    ("McDonald's Shell Mahkota Cheras DT (Gerbang Alaf Restaurants Sdn Bhd)", "GERBANG ALAF RESTAURANTS SDN BHD", True),
+    ("MR. D.I.Y. (M) SDN BHD (IOI Puchong)", "MR. D.I.Y. (M) SDN BHD", True),
+    ("FamilyMart (Maxincone Resources Sdn Bhd), The Sunnit USJ", "HAXINCONE RESOURCES SDN BHD", True),  # label typo
+    ("Sushi Q", "EDEN IMPRESSION SDN BHD", False),
+    ("AMPHAWA THAI TEA & CO.", "DIMILIKI OLEH T PLUS F&B SDN. BHD.", False),
+    ("Starbucks", "Corner Grind Coffee", False),
+    ("Shop", "Corner Grind Coffee", False),
+    (None, "Corner Grind Coffee", False),
+])
+def test_merchant_identified(pred, gold, ok):
+    assert merchant_identified(pred, gold) is ok
+    if not ok:
+        assert not merchant_match(pred, gold)  # the strict rule is never looser
 
 
 @pytest.mark.parametrize("raw,dayfirst,expected", [

@@ -42,6 +42,29 @@ def merchant_match(pred: Optional[str], gold: Optional[str]) -> bool:
     return SequenceMatcher(None, p.replace(" ", ""), g.replace(" ", "")).ratio() >= MERCHANT_SIMILARITY
 
 
+def merchant_identified(pred: Optional[str], gold: Optional[str]) -> bool:
+    """Looser rule: the right business was named, even with extra detail.
+
+    True when the names match, or one normalized name appears inside the other
+    (e.g. "McDonald's (Gerbang Alaf Restaurants Sdn Bhd)" contains the legal name
+    "Gerbang Alaf Restaurants Sdn Bhd"), allowing one or two misread characters
+    for names of 6+ letters. Reported next to the strict merchant score, never instead of it.
+    """
+    if merchant_match(pred, gold):
+        return True
+    p, g = normalize_merchant(pred).replace(" ", ""), normalize_merchant(gold).replace(" ", "")
+    if len(p) < 4 or len(g) < 4:
+        return False
+    short, long_ = (p, g) if len(p) <= len(g) else (g, p)
+    if short in long_:
+        return True
+    if len(short) < 6:
+        return False
+    n = len(short)
+    best = max(SequenceMatcher(None, short, long_[i:i + n]).ratio() for i in range(len(long_) - n + 1))
+    return best >= MERCHANT_SIMILARITY
+
+
 def _year(y: int) -> int:
     return 2000 + y if y < 100 else y
 

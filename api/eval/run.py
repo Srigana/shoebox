@@ -34,7 +34,7 @@ from typing import Any, Callable, Optional
 from app.extract import MODEL, PROMPT_VERSION, SUPPORTED_TYPES, ExtractionError, extract_receipt_detailed
 from app.schemas import Receipt
 
-from .score import FIELDS, MATCHERS, MERCHANT_SIMILARITY, wilson
+from .score import FIELDS, MATCHERS, MERCHANT_SIMILARITY, merchant_identified, wilson
 
 EVAL_DIR = Path(__file__).resolve().parent
 REPO_ROOT = EVAL_DIR.parent.parent
@@ -211,6 +211,7 @@ def _score_and_report(
     results_dir: Path, reports_dir: Path, summary_path: Path, log: Callable[[str], None],
 ) -> dict[str, Any]:
     per_field = {f: {"correct": 0, "labeled": 0, "misses": []} for f in FIELDS}
+    ident = {"correct": 0, "labeled": 0, "misses": []}  # merchant, looser "business identified" rule
     all_correct = receipts_scored = errors = 0
     latencies, in_tok, out_tok = [], [], []
     out_rows = []
@@ -240,6 +241,13 @@ def _score_and_report(
             row_out[f"{f}_ok"] = "yes" if ok else "no"
             if not ok:
                 per_field[f]["misses"].append((r["file"], gold, "extraction failed" if rec.get("error") else got))
+            if f == "merchant":
+                found = (not rec.get("error")) and merchant_identified(got, gold)
+                ident["labeled"] += 1
+                ident["correct"] += int(found)
+                row_out["merchant_identified_ok"] = "yes" if found else "no"
+                if not found:
+                    ident["misses"].append((r["file"], gold, "extraction failed" if rec.get("error") else got))
         if scored_any:
             receipts_scored += 1
             all_correct += int(all_ok)
@@ -252,6 +260,8 @@ def _score_and_report(
 
     fields_correct = sum(v["correct"] for v in per_field.values())
     fields_labeled = sum(v["labeled"] for v in per_field.values())
+    # Same total, with merchant scored by the looser rule instead of the strict one.
+    fields_correct_ident = fields_correct - per_field["merchant"]["correct"] + ident["correct"]
     price = PRICES.get(model)
     cost = None
     if price and in_tok:
@@ -270,6 +280,10 @@ def _score_and_report(
         "fields_correct": fields_correct,
         "fields_labeled": fields_labeled,
         "field_ci": [round(100 * x, 1) for x in wilson(fields_correct, fields_labeled)],
+        "field_accuracy_identified": pct(fields_correct_ident, fields_labeled),
+        "fields_correct_identified": fields_correct_ident,
+        "merchant_identified": {"correct": ident["correct"], "labeled": ident["labeled"],
+                                "accuracy": pct(ident["correct"], ident["labeled"])},
         "receipts_all_correct": all_correct,
         "receipts_scored": receipts_scored,
         "errors": errors,
@@ -293,17 +307,22 @@ def _score_and_report(
         "| Field | Correct | Accuracy | 95% interval |",
         "|---|---|---|---|",
     ]
+    def row(label: str, k: int, n: int, bold: bool = False) -> str:
+        if not n:
+            return f"| {label} | not labeled | | |"
+        lo, hi = wilson(k, n)
+        b = "**" if bold else ""
+        return f"| {b}{label}{b} | {b}{k}/{n}{b} | {b}{pct(k, n)}%{b} | {100 * lo:.1f}% to {100 * hi:.1f}% |"
+
+    labels = {"merchant": "Merchant, exact name", "date": "Date", "total": "Total", "category": "Category"}
     for f in FIELDS:
-        v = per_field[f]
-        if not v["labeled"]:
-            lines.append(f"| {f.capitalize()} | not labeled | | |")
-            continue
-        lo, hi = wilson(v["correct"], v["labeled"])
-        lines.append(f"| {f.capitalize()} | {v['correct']}/{v['labeled']} | {pct(v['correct'], v['labeled'])}% "
-                     f"| {100 * lo:.1f}% to {100 * hi:.1f}% |")
-    lo, hi = wilson(fields_correct, fields_labeled)
-    lines.append(f"| **All labeled fields** | **{fields_correct}/{fields_labeled}** | "
-                 f"**{summary['field_accuracy']}%** | {100 * lo:.1f}% to {100 * hi:.1f}% |")
+        lines.append(row(labels[f], per_field[f]["correct"], per_field[f]["labeled"]))
+        if f == "merchant" and ident["labeled"]:
+            lines.append(row("Merchant, business identified", ident["correct"], ident["labeled"]))
+    lines.append(row("All labeled fields, strict", fields_correct, fields_labeled, bold=True))
+    if ident["labeled"]:
+        lines.append(row("All labeled fields, merchant as business identified", fields_correct_ident, fields_labeled, bold=True))
+    table_end = len(lines)
     lines += [
         "",
         f"- Receipts with every labeled field correct: {all_correct}/{receipts_scored}"
@@ -324,18 +343,26 @@ def _score_and_report(
         misses = per_field[f]["misses"]
         if not misses:
             continue
-        lines += [f"### {f.capitalize()}: {len(misses)} missed", "", "| File | Expected | Got |", "|---|---|---|"]
+        lines += [f"### {labels[f]}: {len(misses)} missed", "", "| File | Expected | Got |", "|---|---|---|"]
         lines += [f"| {_fmt(fn)} | {_fmt(exp)} | {_fmt(got)} |" for fn, exp, got in misses[:25]]
         if len(misses) > 25:
             lines.append(f"| ... | {len(misses) - 25} more in results.csv | |")
         lines.append("")
+        if f == "merchant":
+            lines += [f"Of these, {len(ident['misses'])} also fail the business-identified rule:", ""]
+            lines += [f"- {_fmt(fn)}: expected {_fmt(exp)}, got {_fmt(got)}" for fn, exp, got in ident["misses"]]
+            lines.append("")
     lines += [
         "## How fields are scored",
         "",
         "- Total: within one cent of the label.",
         "- Date: same calendar day.",
-        f"- Merchant: equal after ignoring case, punctuation and suffixes such as Inc or Sdn Bhd, "
+        f"- Merchant, exact name: equal after ignoring case, punctuation and suffixes such as Inc or Sdn Bhd, "
         f"or at least {MERCHANT_SIMILARITY:.0%} similar character by character.",
+        "- Merchant, business identified: also counts when one name contains the other, for example "
+        "\"McDonald's (Gerbang Alaf Restaurants Sdn Bhd)\" for the label \"Gerbang Alaf Restaurants Sdn Bhd\", "
+        "allowing a misread character or two. Labels in some datasets use the legal company name while the "
+        "model also gives the brand and branch, so both scores are shown.",
         "- Category: exact match with the labeled Schedule C category.",
         "- Blank labels are not scored. A failed extraction counts as wrong for every labeled field.",
         "- Images are downscaled to 1600 px JPEG first, the same as the web app does before upload.",
@@ -354,7 +381,7 @@ def _score_and_report(
     summary_path.write_text(json.dumps(all_summaries, indent=2) + "\n", encoding="utf-8")
 
     log("")
-    log("\n".join(lines[4: 6 + len(FIELDS) + 1]))  # the results table
+    log("\n".join(lines[4:table_end]))  # the results table
     log(f"\nReport: {os.path.relpath(report)}")
     log(f"Per-receipt detail: {os.path.relpath(results_dir / 'results.csv')}")
     return summary
@@ -365,16 +392,24 @@ MIN_README_SET = 10
 
 
 def readme_section(summaries: dict[str, Any], reports_rel: str) -> str:
-    rows = ["| Test set | Receipts | Total | Date | Merchant | Category | All fields |", "|---|---|---|---|---|---|---|"]
+    rows = [
+        "| Test set | Receipts | Total | Date | Merchant: exact name / business identified | Category "
+        "| All fields: strict / merchant identified |",
+        "|---|---|---|---|---|---|---|",
+    ]
     # Tiny sets such as the three built-in samples are smoke tests, not evidence.
     summaries = {k: v for k, v in summaries.items() if v["receipts"] >= MIN_README_SET}
     if not summaries:
         return "No test set with at least 10 receipts has been run yet. See [api/eval](api/eval/README.md)."
     for name, s in sorted(summaries.items()):
         cell = lambda f: (f"{s['per_field'][f]['accuracy']}%" if s["per_field"][f]["labeled"] else "not labeled")  # noqa: E731
+        mi = s.get("merchant_identified", {}).get("accuracy")
+        merchant = cell("merchant") + (f" / {mi}%" if mi is not None else "")
+        allf = f"**{s['field_accuracy']}%**" + (
+            f" / **{s['field_accuracy_identified']}%**" if s.get("field_accuracy_identified") is not None else "")
         rows.append(
             f"| [{name}]({reports_rel}/{name}.md) | {s['receipts']} | {cell('total')} | {cell('date')} | "
-            f"{cell('merchant')} | {cell('category')} | **{s['field_accuracy']}%** |"
+            f"{merchant} | {cell('category')} | {allf} |"
         )
     models = sorted({s["model"] for s in summaries.values()})
     return "\n".join(rows) + f"\n\nModel: {', '.join(f'`{m}`' for m in models)}. Each report lists every miss."
