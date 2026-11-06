@@ -32,3 +32,15 @@ Browser (Next.js, TypeScript)                FastAPI (Python) on Render         
 - **Measured, not assumed.** The eval runs the exact production prompt and image preprocessing, caches predictions by prompt version so prompt changes can be compared cheaply, and reports 95% confidence intervals because 80 receipts is a small sample.
 - **Honest usage numbers.** Sample-receipt tries are tagged and kept out of the user counts.
 - **Cheap to run.** One origin for the browser (Vercel proxies `/api` to Render), per-client and daily caps on model calls, and nothing stored server-side except anonymous events.
+
+## Acquisition analytics (optional)
+
+`web/lib/track.ts` reports where visitors come from and whether they go on to upload and export, to a separately deployed Trailmark collector (its own project, not in this repo). It sends four events: `visit` (with the referring domain and any `utm_source`, `utm_medium` and `utm_campaign` tags), `upload`, `upload_failed` and `export` (format, rows, and how many rows were the user's own receipts rather than samples). It reuses the `shoebox.cid` ID, so "Delete my data" on the privacy page clears these records too.
+
+It is off until these are set in Vercel:
+
+| Variable | Purpose |
+|---|---|
+| `COLLECTOR_URL` | Base URL of the Trailmark server. `/collect/*` is proxied to it, so the browser still talks to one origin. |
+| `NEXT_PUBLIC_COLLECTOR_WRITE_KEY` | One of the server's `WRITE_KEYS`. It only allows sending events, so it is safe in the browser. |
+| `NEXT_PUBLIC_GA_MEASUREMENT_ID` | Optional `G-` ID. Loads Google Analytics and sends it the same events, for the comparison page. The privacy policy adds a Google Analytics section automatically when this is set. Check whether your visitors' countries require a consent banner first. |

@@ -6,6 +6,7 @@ import { getClientId, logEvent, parseReceipt } from "@/lib/api";
 import { fullCsv, quickbooksCsv } from "@/lib/csv";
 import { prepareFile } from "@/lib/image";
 import { loadSample, SAMPLES } from "@/lib/samples";
+import { fileType, referrerHost, track } from "@/lib/track";
 import { CATEGORIES, deductible, isCategory, SCHEDULE_C_LINE, type Category } from "@/lib/tax";
 import type { DoneItem, Item, SampleRef } from "@/lib/types";
 
@@ -60,7 +61,8 @@ export default function Home() {
       const today = new Date().toISOString().slice(0, 10);
       if (localStorage.getItem("shoebox.visit") !== today) {
         localStorage.setItem("shoebox.visit", today);
-        logEvent("visit", { ref: document.referrer.slice(0, 120) });
+        // Only the referring domain, as the privacy policy says; never the path or query.
+        logEvent("visit", { ref: referrerHost(document.referrer) });
       }
     } catch {
       logEvent("visit");
@@ -90,8 +92,11 @@ export default function Home() {
           if (!receipt.is_receipt) throw new Error("This doesn't look like a receipt or invoice.");
           const category: Category = isCategory(receipt.category) ? receipt.category : "Other expenses";
           update(job.id, { ...base, status: "done", receipt: { ...receipt, category }, category, edited: false });
+          track({ name: "upload", properties: { sample: Boolean(job.sample), file_type: fileType(job.file) } });
         } catch (e) {
-          update(job.id, { ...base, status: "error", error: e instanceof Error ? e.message : "Something went wrong." });
+          const error = e instanceof Error ? e.message : "Something went wrong.";
+          update(job.id, { ...base, status: "error", error });
+          track({ name: "upload_failed", properties: { sample: Boolean(job.sample), error: error.slice(0, 200) } });
         } finally {
           active.current--;
           pump();
@@ -165,6 +170,8 @@ export default function Home() {
     [items],
   );
   const pending = items.filter((i) => i.status !== "done");
+  // Exports made only from the sample receipts are not real usage, so the tracker reports both counts.
+  const realRows = done.filter((i) => !i.sample).length;
 
   const tally = useMemo(() => {
     const by = new Map<Category, { total: number; ded: number; n: number }>();
@@ -371,6 +378,7 @@ export default function Home() {
             onClick={() => {
               download("shoebox-quickbooks.csv", quickbooksCsv(done));
               logEvent("export_qbo", { n: done.length });
+              track({ name: "export", properties: { format: "quickbooks", rows: done.length, real_rows: realRows } });
             }}
           >
             Download QuickBooks CSV
@@ -381,6 +389,7 @@ export default function Home() {
             onClick={() => {
               download("shoebox-ledger.csv", fullCsv(done));
               logEvent("export_csv", { n: done.length });
+              track({ name: "export", properties: { format: "full", rows: done.length, real_rows: realRows } });
             }}
           >
             Download full CSV

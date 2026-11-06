@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { deleteTrackedData } from "@/lib/track";
 
 type State = "idle" | "working" | "done" | "error";
 
@@ -20,9 +21,12 @@ export default function DeleteData() {
     if (!id || !confirm("Delete your usage records and the ledger saved in this browser?")) return;
     setState("working");
     try {
-      const res = await fetch("/api/delete-my-data", { method: "POST", headers: { "X-Client-Id": id } });
+      const [res] = await Promise.all([
+        fetch("/api/delete-my-data", { method: "POST", headers: { "X-Client-Id": id } }),
+        deleteTrackedData(id),
+      ]);
       if (!res.ok) throw new Error(String(res.status));
-      ["shoebox.cid", "shoebox.items.v1", "shoebox.visit"].forEach((k) => localStorage.removeItem(k));
+      ["shoebox.cid", "shoebox.items.v1", "shoebox.visit", "shoebox.outbox"].forEach((k) => localStorage.removeItem(k));
       setState("done");
     } catch {
       setState("error");

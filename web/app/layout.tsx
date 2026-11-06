@@ -1,6 +1,8 @@
 import "@fontsource-variable/public-sans/wght.css";
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
+import GoogleAnalytics from "@/components/GoogleAnalytics";
+import TrackVisit from "@/components/TrackVisit";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,6 +17,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
+        <TrackVisit />
+        <GoogleAnalytics />
         {children}
         <footer className="wrap foot">
           <nav aria-label="Legal" className="foot-links">
